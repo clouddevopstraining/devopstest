@@ -1,0 +1,60 @@
+name: Deploy Instance via Launch Template
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch_name_morningstar:
+        description: "Branch name for Morningstar deployment (default: main)"
+        required: false
+        default: "main"
+      branch_name_engage_pwa:
+        description: "Branch name for Engage-PWA deployment (default: main)"
+        required: false
+        default: "main"
+
+jobs:
+  deploy:
+    runs-on: almalinux-latest
+    container:
+      image: almalinux:9
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Create JSON Metadata File
+        id: create_metadata
+        run: |
+          BRANCH_NAME_MORNINGSTAR="${{ github.event.inputs.branch_name_morningstar }}"
+          BRANCH_NAME_ENGAGE_PWA="${{ github.event.inputs.branch_name_engage_pwa }}"
+          START_TIME=$(date +%s)
+          END_TIME=$(( START_TIME + 604800 )) # One week later
+          cat <<EOF > metadata.json
+          {
+            "apps": {
+                "morningstar": "$BRANCH_NAME_MORNINGSTAR",
+                "engage-pwa": "$BRANCH_NAME_ENGAGE_PWA",
+                "morningstar-auth": "development",
+                "aletheia": "development",
+                "slim-tracking": "development"
+            },
+            "start": $START_TIME,
+            "end": $END_TIME
+          }
+          EOF
+      - name: Upload Metadata to S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: "us-east-1"
+        run: |
+          aws s3 cp metadata.json s3://your-s3-bucket/path/to/metadata.json
+
+      - name: Launch EC2 Instance
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: "your-region"
+        run: |
+          aws ec2 run-instances \
+            --launch-template LaunchTemplateId=lt-xxxxxxxxxxxxxxxxx,Version=1 \
+            --region your-region
